@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Image Uploader</title>
+    <link rel='stylesheet' href='/stylesheets/style.css' />
+  </head>
+  <body>
+    <h1>Upload an image:</h1>
+
+    <form action="/upload" enctype="multipart/form-data" method="post">
+      <input type="text" name="title"><br>
+      <input type="file" name="image" multiple="multiple">
+      <input type="submit" value="Upload">
+    </form>
+  </body>
+</html>
