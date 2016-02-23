@@ -12,6 +12,7 @@ var users = require('./routes/users');
 var fs = require('fs-extra');
 var formidable = require('formidable');
 var gm = require('gm');
+var mkdirp = require('mkdirp');
 
 var app = express();
 
@@ -45,7 +46,9 @@ function restrict(req, res, next) {
 
 app.post('/upload', function(req, res) {
     var form = new formidable.IncomingForm();
+    var path = 'uploads/' + req.session.user + '/';
     form.parse(req, function(err, fields, files) {
+        form.uploadDir = 'uploads/' + req.session.user + '/';
         console.log('upload received!');
     });
     
@@ -63,7 +66,7 @@ app.post('/upload', function(req, res) {
     
     form.on('error', function (err) {
         errored = true;
-        res.status(413).send('<p>Incorrect file type.</p>' +
+        res.status(413).send('<p>Incorrect file type (or no file) chosen.</p>' +
                 '<p>Only images (i.e. jpg or png) are accepted.</p>' +
                 '<p>Hit "Back" to go back to the restricted page:</p>' +
                 '<p><form action="/restricted">' +
@@ -72,36 +75,35 @@ app.post('/upload', function(req, res) {
     });
 
     form.on('end', function(fields, files) {
+        // Location of the uploaded file
+        var path = this.openedFiles[0].path;
+        // The file name of the uploaded file
+        var file_name = this.openedFiles[0].name;
         if(!errored)
         {
-            // Temporary location of the uploaded file
-            var temp_path = this.openedFiles[0].path;
-            // The file name of the uploaded file
-            var file_name = this.openedFiles[0].name;
-            // Location where the uploaded file will be copied to
-            var new_location = 'uploads/' + req.session.user + '/';
             // Location where the thumbnail will be stored
-            var thumb_path = 'public/' + req.session.user + '/thumbs/';
+            var thumb_path = 'public/thumbs/' + req.session.user + '/';
             
-            fs.copy(temp_path, new_location + file_name, function(err) {
-//                gm(new_location + file_name).thumb(128, 128, thumb_path, 100,
-//                function (err) {
-//                    if (!err)
-//                    {
-//                        console.log('image resize success!');
-//                    }
-//                });
-                res.writeHead(200);
-                if (err) {
-                    res.write('<p>The file did not get saved properly</p>');
+            mkdirp(thumb_path, function(err) {
+                if(err) {
+                    console.log(err);
                 } else {
-                    res.write('<p>Upload completed successfully!</p>');
+                    gm(path + file_name).thumb(50, 50,
+                    thumb_path + file_name, 50, function (err) {
+                        if (!err) {
+                            console.log('thumb creation succeeded!');
+                        } else {
+                            console.log(err);
+                        }
+                    });
                 }
-                res.end('<p>Hit "Back" to go back to /restricted:</p>' +
-                        '<p><form action="/restricted">' +
-                        '<input type="submit" value="Back">' +
-                        '</form></p>');
             });
+            res.writeHead(200);
+            res.write('<p>Upload completed successfully!</p>');
+            res.end('<p>Hit "Back" to go back to /restricted:</p>' +
+                    '<p><form action="/restricted">' +
+                    '<input type="submit" value="Back">' +
+                    '</form></p>');
         }
     });    
 });
@@ -110,26 +112,55 @@ app.use('/restricted', restrict, function(req, res){
     res.send('Wahoo! restricted area, click to <a href="/logout">logout</a>' + 
             '<p><form action="/uploader">' +
             '<input type="submit" value="Upload image">' +
-            '</form></p>'/* + 
+            '</form></p>' + 
             '<p><form action="/summary">' +
             '<input type="submit" value="View list of images">' +
-            '</form></p>'*/);
+            '</form></p>');
 });
 
 // Show thumbnails of all images uploaded
-//app.get('/summary', restrict, function (req, res){
-//    var dirPath = req.session.user + '/thumbs/';
-//    fs.readdir(dirPath, function(err, files) {
-//        var images_HTML = '';
-//        for(var i=0; i<files.length; i++)
-//        {
-//            images_HTML += '<form action="/imageDisplay/' + files[i]
-//                    + '" method="get"> ' +
-//                    '<input type="image" src="" value="Submit"></form>';
-//        }
-//        res.send(images_HTML, 'binary');
-//    });
-//});
+app.get('/summary', restrict, function (req, res){
+    var dirPath = 'thumbs/' + req.session.user + '/';
+    fs.readdir('public/' + dirPath, function(err, files) {
+        if(!err)
+        {
+            var title = 'Uploaded Images Summary';
+            var images_HTML = '<head><title>' + title + '</title>' +
+                    '<link rel="stylesheet" href="/stylesheets/style.css" />' +
+                    '</head><body><h1>' + title + '</h1><p>';
+            for(var i=0; i<files.length; i++)
+            {
+                images_HTML += '<div><p><form action="/imageDisplay/' + files[i]
+                        + '" method="get"> ' +
+                        '<input type="image" src="' + dirPath + files[i] +
+                        '" value="Submit"></form></p></div>';
+            }
+            res.send(images_HTML + '</p><div style="clear:both">' +
+                    '<form action="/restricted">' +
+                    '<input type="submit" value="Back">' +
+                    '</form></div></body>');
+        }
+        else
+        {
+            console.log(err);
+            res.send('<p>Nothing to see here!</p>' +
+                    '<p>Upload some images to view a list of all your ' +
+                    'uploaded images here!</p>' +
+                    '<p><form action="/restricted">' +
+                    '<input type="submit" value="Back">' +
+                    '</form></p>');
+        }
+    });
+});
+
+// Stop users from seeing other users' thumbnails
+app.get('/thumbs/mark/tetris1.jpg', restrict, function (req, res){
+    console.log(req.params);
+    if(req.session.user !== req.params.username)
+    {
+        res.redirect('login');
+    }
+});
 
 // Show selected image
 app.get('/imageDisplay/:image', restrict, function (req, res){
@@ -141,15 +172,21 @@ app.get('/imageDisplay/:image', restrict, function (req, res){
 
 //Save new user to a file
 app.post('/register', function(req, res) {
-    userList[req.body.username] = req.body.password;
-    fs.writeFile('./node_modules/Users.json', JSON.stringify(userList),
-    function(err) {
-        if(err) {
-            return console.log(err);
-        }
-        console.log("The user was saved!");
-    });
-    res.redirect('login');
+    if(!userList[req.body.username])
+    {
+        userList[req.body.username] = req.body.password;
+        fs.writeFile('./node_modules/Users.json', JSON.stringify(userList),
+        function(err) {
+            if(err) {
+                return console.log(err);
+            }
+            else
+            {
+                console.log("The user was saved!");
+            }
+        });
+        res.redirect('login');
+    }
 });
 
 app.use('/logout', function(req, res){
@@ -199,7 +236,7 @@ authenticate(req.body.username, req.body.password, function(err, user){
         req.session.success = 'Authenticated as ' + user.name
           + ' click to <a href="/logout">logout</a>. '
           + ' You may now access <a href="/restricted">/restricted</a>.';
-        res.redirect('back');
+        res.redirect('restricted');
       });
     } else {
       req.session.error = 'Authentication failed, please check your '
