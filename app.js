@@ -10,8 +10,8 @@ var session = require('express-session');
 var routes = require('./routes/index');
 var users = require('./routes/users');
 var fs = require('fs-extra');
-var util = require('util');
 var formidable = require('formidable');
+var gm = require('gm');
 
 var app = express();
 
@@ -43,34 +43,66 @@ function restrict(req, res, next) {
   }
 }
 
-app.post('/upload', restrict, function(req, res) {
+app.post('/upload', function(req, res) {
     var form = new formidable.IncomingForm();
     form.parse(req, function(err, fields, files) {
-        res.writeHead(200);
-        res.write('<p>Received upload!<br>' +
-                'Hit "Back" to go back to the /restricted page:</p>' +
+        console.log('upload received!');
+    });
+    
+    var errored = false;
+
+    form.on('fileBegin', function(name, file) {
+        // Type of the file
+        var type = file.type;
+
+        if(type != 'image/jpeg' && type != 'image/png' && type != 'image/gif')
+        {
+            this.emit('error');
+        }
+    });
+    
+    form.on('error', function (err) {
+        errored = true;
+        res.status(413).send('<p>Incorrect file type.</p>' +
+                '<p>Only images (i.e. jpg or png) are accepted.</p>' +
+                '<p>Hit "Back" to go back to the restricted page:</p>' +
                 '<p><form action="/restricted">' +
                 '<input type="submit" value="Back">' +
                 '</form></p>');
-        res.end(util.inspect({fields: fields, files: files}));
     });
 
-    //var img_exists = false;
     form.on('end', function(fields, files) {
-        /* Temporary location of our uploaded file */
-        var temp_path = this.openedFiles[0].path;
-        /* The file name of the uploaded file */
-        var file_name = this.openedFiles[0].name;
-        /* Location where we want to copy the uploaded file */
-        var new_location = 'uploads/' + req.session.user + '/';
-
-        fs.copy(temp_path, new_location + file_name, function(err) {  
-            if (err) {
-                console.error(err);
-            } else {
-                console.log("success!");
-            }
-        });
+        if(!errored)
+        {
+            // Temporary location of the uploaded file
+            var temp_path = this.openedFiles[0].path;
+            // The file name of the uploaded file
+            var file_name = this.openedFiles[0].name;
+            // Location where the uploaded file will be copied to
+            var new_location = 'uploads/' + req.session.user + '/';
+            // Location where the thumbnail will be stored
+            var thumb_path = 'public/' + req.session.user + '/thumbs/';
+            
+            fs.copy(temp_path, new_location + file_name, function(err) {
+//                gm(new_location + file_name).thumb(128, 128, thumb_path, 100,
+//                function (err) {
+//                    if (!err)
+//                    {
+//                        console.log('image resize success!');
+//                    }
+//                });
+                res.writeHead(200);
+                if (err) {
+                    res.write('<p>The file did not get saved properly</p>');
+                } else {
+                    res.write('<p>Upload completed successfully!</p>');
+                }
+                res.end('<p>Hit "Back" to go back to /restricted:</p>' +
+                        '<p><form action="/restricted">' +
+                        '<input type="submit" value="Back">' +
+                        '</form></p>');
+            });
+        }
     });    
 });
 
@@ -80,14 +112,29 @@ app.use('/restricted', restrict, function(req, res){
             '<input type="submit" value="Upload image">' +
             '</form></p>'/* + 
             '<p><form action="/summary">' +
-            '<input type="submit" value="View image">' +
+            '<input type="submit" value="View list of images">' +
             '</form></p>'*/);
 });
 
-/// Show files
-app.get('/uploads/fullsize/:file', restrict, function (req, res){
-    file = req.params.file;
-    var img = fs.readFile("./uploads/" + req.session.user + '/' + file);
+// Show thumbnails of all images uploaded
+//app.get('/summary', restrict, function (req, res){
+//    var dirPath = req.session.user + '/thumbs/';
+//    fs.readdir(dirPath, function(err, files) {
+//        var images_HTML = '';
+//        for(var i=0; i<files.length; i++)
+//        {
+//            images_HTML += '<form action="/imageDisplay/' + files[i]
+//                    + '" method="get"> ' +
+//                    '<input type="image" src="" value="Submit"></form>';
+//        }
+//        res.send(images_HTML, 'binary');
+//    });
+//});
+
+// Show selected image
+app.get('/imageDisplay/:image', restrict, function (req, res){
+    file = req.params.image;
+    var img = fs.readFileSync('./uploads/' + req.session.user + '/' + file);
     res.writeHead(200, {'Content-Type': 'image/jpg' });
     res.end(img, 'binary');
 });
@@ -119,7 +166,7 @@ app.get('/register', function(req, res){
 });
 
 //GET file upload page
-app.get('/uploader', function(req, res){
+app.get('/uploader', restrict, function(req, res){
   res.render('uploader');
 });
 
