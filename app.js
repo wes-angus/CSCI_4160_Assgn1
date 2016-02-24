@@ -1,3 +1,5 @@
+/* global __dirname */
+
 var express = require('express');
 var path = require('path');
 var favicon = require('serve-favicon');
@@ -11,8 +13,9 @@ var routes = require('./routes/index');
 var users = require('./routes/users');
 var fs = require('fs-extra');
 var formidable = require('formidable');
-var gm = require('gm');
 var mkdirp = require('mkdirp');
+//Requires GraphicsMagick to be installed on system to work properly
+var gm = require('gm');
 
 var app = express();
 
@@ -66,7 +69,8 @@ app.post('/upload', restrict, function(req, res) {
         }
     });
     
-    //Stop the upload process and output an error if one is encountered
+    //Stop the upload process and output
+    //an error message when an error is encountered
     form.on('error', function (err) {
         errored = true;
         res.status(413).send('<p>Incorrect file type (or no file) chosen.</p>' +
@@ -97,6 +101,7 @@ app.post('/upload', restrict, function(req, res) {
                         if(err) {
                             console.log(err);
                         } else {
+                            //Save the thumbnail of the uploaded image (50x50)
                             gm(path + file_name).thumb(50, 50,
                             thumb_path + file_name, 50, function (err) {
                                 if (!err) {
@@ -110,6 +115,7 @@ app.post('/upload', restrict, function(req, res) {
                 }
             });
             
+            //Confirmation output
             res.writeHead(200);
             res.write('<p>Upload completed successfully!</p>');
             res.end('<p>Hit "Back" to go back to /restricted:</p>' +
@@ -120,6 +126,7 @@ app.post('/upload', restrict, function(req, res) {
     });    
 });
 
+//Main page after login
 app.use('/restricted', restrict, function(req, res){
     res.send('Wahoo! restricted area, click to <a href="/logout">logout</a>' + 
             '<p><form action="/uploader">' +
@@ -133,6 +140,9 @@ app.use('/restricted', restrict, function(req, res){
 // Show thumbnails of all images uploaded
 app.get('/summary', restrict, function (req, res){
     var dirPath = 'thumbs/' + req.session.user + '/';
+    //Attempt to read thumbnail directory
+    //If non-existent,
+    //output error message explaining no images have been uploaded
     fs.readdir('public/' + dirPath, function(err, files) {
         if(!err)
         {
@@ -142,6 +152,7 @@ app.get('/summary', restrict, function (req, res){
                     '</head><body><h1>' + title + '</h1><p>';
             for(var i=0; i<files.length; i++)
             {
+                //Display button that uses thumbnail of larger image it links to
                 images_HTML += '<div><p><form action="/imageDisplay/' + files[i]
                         + '" method="get"> ' +
                         '<input type="image" src="' + dirPath + files[i] +
@@ -155,6 +166,7 @@ app.get('/summary', restrict, function (req, res){
         else
         {
             console.log(err);
+            //Output error message
             res.send('<p>Nothing to see here!</p>' +
                     '<p>Upload some images to view a list of all your ' +
                     'uploaded images here!</p>' +
@@ -230,6 +242,7 @@ app.get('/login', function(req, res, next) {
   res.render('login');
 });
 
+//Download image given as parameter
 app.post('/download/:filename', restrict, function(req, res){
   var filename = req.params.filename;
   var file = 'public/images/' + req.session.user + '/' + filename;
@@ -243,27 +256,28 @@ app.post('/download/:filename', restrict, function(req, res){
 });
 
 app.post('/login', function(req, res, next) {
-authenticate(req.body.username, req.body.password, function(err, user){
-    if (user) {
-      // Regenerate session when signing in
-      // to prevent fixation 
-      req.session.regenerate(function(){
-        // Store the user's primary key 
-        // in the session store to be retrieved,
-        // or in this case the entire user object
-        req.session.user = req.body.username;
-        req.session.success = 'Authenticated as ' + user.name
-          + ' click to <a href="/logout">logout</a>. '
-          + ' You may now access <a href="/restricted">/restricted</a>.';
-        res.redirect('restricted');
-      });
-    } else {
-      req.session.error = 'Authentication failed, please check your '
-        + ' username and password.'
-        + ' (use "mark" and "password")';
-      res.redirect('login');
-    }}
-)});
+    authenticate(req.body.username, req.body.password, function(err, user){
+        if (user) {
+            // Regenerate session when signing in
+            // to prevent fixation 
+            req.session.regenerate(function(){
+                // Store the user's primary key 
+                // in the session store to be retrieved,
+                // or in this case the entire user object
+                req.session.user = req.body.username;
+                req.session.success = 'Authenticated as ' + user.name +
+                  ' click to <a href="/logout">logout</a>. ' +
+                  ' You may now access <a href="/restricted">/restricted</a>.';
+                res.redirect('restricted');
+            });
+        } else {
+            req.session.error = 'Authentication failed, please check your '
+              + ' username and password.'
+              + ' (use "mark" and "password")';
+            res.redirect('login');
+        }
+    });
+});
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {
