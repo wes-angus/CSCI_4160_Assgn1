@@ -4,7 +4,7 @@ var favicon = require('serve-favicon');
 var logger = require('morgan');
 var cookieParser = require('cookie-parser');
 var bodyParser = require('body-parser');
-var userList = require('Users.json');
+var userList = require('./Users.json');
 var session = require('express-session');
 
 var routes = require('./routes/index');
@@ -44,11 +44,11 @@ function restrict(req, res, next) {
   }
 }
 
+//Upload images to the server
 app.post('/upload', restrict, function(req, res) {
     var form = new formidable.IncomingForm();
-    var path = 'images/' + req.session.user + '/';
+    var path = 'public/images/' + req.session.user + '/';
     form.parse(req, function(err, fields, files) {
-        form.uploadDir = path;
         console.log('upload received!');
     });
     
@@ -58,12 +58,15 @@ app.post('/upload', restrict, function(req, res) {
         // Type of the file
         var type = file.type;
 
+        //Restrict non-image files from being uploaded
         if(type != 'image/jpeg' && type != 'image/png' && type != 'image/gif')
         {
+            //Treats the uploading of a non-image file as an error
             this.emit('error');
         }
     });
     
+    //Stop the upload process and output an error if one is encountered
     form.on('error', function (err) {
         errored = true;
         res.status(413).send('<p>Incorrect file type (or no file) chosen.</p>' +
@@ -75,29 +78,38 @@ app.post('/upload', restrict, function(req, res) {
     });
 
     form.on('end', function(fields, files) {
-        // Location of the uploaded file
-        var path = this.openedFiles[0].path;
-        // The file name of the uploaded file
+        /* Temporary location of our uploaded file */
+        var temp_path = this.openedFiles[0].path;
+        /* The file name of the uploaded file */
         var file_name = this.openedFiles[0].name;
+        
         if(!errored)
         {
             // Location where the thumbnail will be stored
             var thumb_path = 'public/thumbs/' + req.session.user + '/';
             
-            mkdirp(thumb_path, function(err) {
-                if(err) {
-                    console.log(err);
+            fs.copy(temp_path, path + file_name, function(err) {  
+                if (err) {
+                    console.error(err);
                 } else {
-                    gm(path + file_name).thumb(50, 50,
-                    thumb_path + file_name, 50, function (err) {
-                        if (!err) {
-                            console.log('thumb creation succeeded!');
-                        } else {
+                    //Create the directory if it does not exist
+                    mkdirp(thumb_path, function(err) {
+                        if(err) {
                             console.log(err);
+                        } else {
+                            gm(path + file_name).thumb(50, 50,
+                            thumb_path + file_name, 50, function (err) {
+                                if (!err) {
+                                    console.log('thumb creation succeeded!');
+                                } else {
+                                    console.log(err);
+                                }
+                            });
                         }
                     });
                 }
             });
+            
             res.writeHead(200);
             res.write('<p>Upload completed successfully!</p>');
             res.end('<p>Hit "Back" to go back to /restricted:</p>' +
@@ -170,7 +182,7 @@ app.post('/register', function(req, res) {
     if(!userList[req.body.username])
     {
         userList[req.body.username] = req.body.password;
-        fs.writeFile('./node_modules/Users.json', JSON.stringify(userList),
+        fs.writeFile('./Users.json', JSON.stringify(userList),
         function(err) {
             if(err) {
                 return console.log(err);
