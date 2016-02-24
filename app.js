@@ -44,11 +44,11 @@ function restrict(req, res, next) {
   }
 }
 
-app.post('/upload', function(req, res) {
+app.post('/upload', restrict, function(req, res) {
     var form = new formidable.IncomingForm();
-    var path = 'uploads/' + req.session.user + '/';
+    var path = 'images/' + req.session.user + '/';
     form.parse(req, function(err, fields, files) {
-        form.uploadDir = 'uploads/' + req.session.user + '/';
+        form.uploadDir = path;
         console.log('upload received!');
     });
     
@@ -153,21 +153,16 @@ app.get('/summary', restrict, function (req, res){
     });
 });
 
-// Stop users from seeing other users' thumbnails
-app.get('/thumbs/mark/tetris1.jpg', restrict, function (req, res){
-    console.log(req.params);
-    if(req.session.user !== req.params.username)
-    {
-        res.redirect('login');
-    }
-});
-
 // Show selected image
 app.get('/imageDisplay/:image', restrict, function (req, res){
     file = req.params.image;
-    var img = fs.readFileSync('./uploads/' + req.session.user + '/' + file);
-    res.writeHead(200, {'Content-Type': 'image/jpg' });
-    res.end(img, 'binary');
+    var img_path = '/images/' + req.session.user + '/' + file;
+    res.send('<img src="' + img_path + '" alt="Your uploaded image">' +
+            '<p><form method="post" action="/download/' + file + '">' +
+            '<input type="submit" value="Download image">' +
+            '</form><form action="/summary">' +
+            '<input type="submit" value="Back">' +
+            '</form></p>');
 });
 
 //Save new user to a file
@@ -221,6 +216,18 @@ function authenticate(name, pass, fn) {
 /* GET home page. */
 app.get('/login', function(req, res, next) {
   res.render('login');
+});
+
+app.post('/download/:filename', restrict, function(req, res){
+  var filename = req.params.filename;
+  var file = 'public/images/' + req.session.user + '/' + filename;
+  res.download(file, function(err){
+    if (err) {
+      console.log(err);
+    } else {
+      console.log('file downloaded!');
+    }
+  });
 });
 
 app.post('/login', function(req, res, next) {
