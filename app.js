@@ -166,7 +166,7 @@ app.get('/summary', restrict, function (req, res){
         else
         {
             console.log(err);
-            //Output error message
+            //Output message when no images are found
             res.send('<p>Nothing to see here!</p>' +
                     '<p>Upload some images to view a list of all your ' +
                     'uploaded images here!</p>' +
